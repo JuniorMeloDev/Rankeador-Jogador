@@ -64,18 +64,16 @@ def determinar_ranking_ajustado(jogadores_info):
     return ranking_final, relatorio_estruturado
 
 # ==============================================================================
-# INTERFACE DA APLICAÇÃO WEB COM STREAMLIT (COM VALIDAÇÃO MELHORADA)
+# INTERFACE DA APLICAÇÃO WEB COM STREAMLIT (SEM FORMULÁRIO)
 # ==============================================================================
 
 # Função auxiliar para validar uma única sequência
 def validar_sequencia(sequencia):
     """Retorna uma mensagem de erro se a sequência for inválida, senão retorna None."""
-    if not sequencia: # Ainda não foi preenchido
-        return None
-    if len(sequencia) > 10:
-        return f"A sequência tem {len(sequencia)} dígitos. O máximo é 10."
     if not all(c in '01' for c in sequencia):
         return "A sequência deve conter apenas os números 0 e 1."
+    if len(sequencia) > 10:
+        return f"A sequência tem {len(sequencia)} dígitos. O máximo é 10."
     return None
 
 st.set_page_config(page_title="Rankeador Zero ou Um", page_icon="🏆", layout="centered")
@@ -86,56 +84,45 @@ st.markdown("Insira os nomes e as sequências de 10 dígitos (0 ou 1) para cada 
 if 'resultado' not in st.session_state:
     st.session_state.resultado = None
 
-# Formulário para agrupar os campos e o botão de submit
-with st.form("form_jogadores"):
-    jogadores_input = []
-    col1, col2 = st.columns(2)
+# Cria os campos de entrada sem um formulário
+col1, col2 = st.columns(2)
+jogadores_input = []
+todos_campos_validos = True
 
-    for i in range(4):
-        col = col1 if i < 2 else col2
-        with col:
-            with st.container(border=True):
-                nome = st.text_input(f"Nome do Jogador {i+1}", key=f"nome_{i}")
-                
-                # O campo de texto para a sequência agora não tem max_chars para podermos mostrar o erro de comprimento
-                sequencia = st.text_input(f"Sequência para {nome or f'Jogador {i+1}'}", key=f"seq_{i}", placeholder="0101010101")
-                
-                # Feedback visual e instantâneo
-                erro_msg = validar_sequencia(sequencia)
-                if erro_msg:
-                    st.caption(f"⚠️ {erro_msg}") # Mostra um aviso abaixo do campo
+for i in range(4):
+    col = col1 if i < 2 else col2
+    with col:
+        with st.container(border=True):
+            nome = st.text_input(f"Nome do Jogador {i+1}", key=f"nome_{i}")
+            sequencia = st.text_input(f"Sequência para {nome or f'Jogador {i+1}'}", key=f"seq_{i}", placeholder="0101010101")
+            
+            # Feedback visual instantâneo a cada alteração
+            erro_msg = validar_sequencia(sequencia)
+            if erro_msg:
+                st.caption(f"⚠️ {erro_msg}")
+                todos_campos_validos = False # Marca que há um erro na página
 
-                jogadores_input.append({'nome': nome, 'sequencia': sequencia})
+            jogadores_input.append({'nome': nome, 'sequencia': sequencia})
 
-    submitted = st.form_submit_button("Determinar Ranking", type="primary", use_container_width=True)
+# Botões de ação
+botoes_col1, botoes_col2 = st.columns([3, 1]) # Coluna maior para o botão principal
 
-
-if submitted:
-    erros_finais = []
-    jogadores_validos = []
-
-    # Validação final antes de executar o jogo
-    for i, j in enumerate(jogadores_input):
-        nome = j['nome'] if j['nome'] else f"Jogador {i+1}"
-        sequencia = j['sequencia']
-        
-        if len(sequencia) != 10:
-            erros_finais.append(f"A sequência para '{nome}' deve ter exatamente 10 dígitos.")
-        elif not all(c in '01' for c in sequencia):
-             erros_finais.append(f"A sequência para '{nome}' contém caracteres inválidos.")
+with botoes_col1:
+    if st.button("Determinar Ranking", type="primary", use_container_width=True):
+        # Validação final antes de executar o jogo
+        if todos_campos_validos and all(len(j['sequencia']) == 10 for j in jogadores_input):
+            jogadores_validos = [{'nome': j['nome'] if j['nome'] else f"Jogador {i+1}", 'sequencia': j['sequencia']} for i, j in enumerate(jogadores_input)]
+            ranking, relatorio = determinar_ranking_ajustado(jogadores_validos)
+            st.session_state.resultado = {'ranking': ranking, 'relatorio': relatorio}
         else:
-            jogadores_validos.append({'nome': nome, 'sequencia': j['sequencia']})
+            st.error("❌ Por favor, corrija os erros nos campos antes de continuar. Cada sequência deve ter exatamente 10 dígitos (0 ou 1).", icon="🚨")
+            st.session_state.resultado = None
 
-    if erros_finais:
-        # Mostra todos os erros de uma vez
-        for erro in erros_finais:
-            st.error(f"❌ {erro}", icon="🚨")
-        st.session_state.resultado = None # Limpa resultados antigos se houver erro
-    else:
-        # Se tudo estiver correto, executa a lógica do jogo
-        ranking, relatorio = determinar_ranking_ajustado(jogadores_validos)
-        st.session_state.resultado = {'ranking': ranking, 'relatorio': relatorio}
-
+with botoes_col2:
+    if st.button("Limpar", use_container_width=True):
+        st.session_state.resultado = None
+        # Limpa os campos de texto reiniciando a página (prática comum no Streamlit)
+        st.rerun()
 
 # Exibe os resultados se eles existirem no estado da sessão
 if st.session_state.resultado:
@@ -149,7 +136,6 @@ if st.session_state.resultado:
         for entrada in st.session_state.resultado['relatorio']:
             tipo = entrada.get('type')
             texto = entrada.get('text')
-            
             if tipo == 'round_header': st.markdown(f"**{texto}**")
             elif tipo == 'winner': st.success(texto, icon="🏅")
             elif tipo == 'analysis': st.markdown(f"> *{texto}*")
